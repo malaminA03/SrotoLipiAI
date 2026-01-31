@@ -10,7 +10,8 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       // Polyfill process.env.API_KEY so it works in the browser
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+      // Using the provided key as a fallback if not found in .env
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || "AIzaSyAoW1O-45_dLJ3vI-9bhSjduAdHKD5SGJY")
     },
     server: {
       port: 3000,
