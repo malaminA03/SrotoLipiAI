@@ -1,0 +1,7 @@
+{
+  "name": "SrotoLipi AI - Content Factory",
+  "description": "A futuristic, AI-powered Bengali content generation engine using Google Gemini 3 Flash and Gemini 2.5 TTS.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
