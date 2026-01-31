@@ -1,9 +1,6 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { GeneratedContent, Tone } from "../types";
 
-// Initialize client with the API Key from environment
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 const SYSTEM_INSTRUCTION = `
 You are SrotoLipi AI, an advanced Bengali content creation engine. 
 Your task is to analyze the user's input (Text, Image, Video, or Audio) and generate high-quality content in BENGALI tailored for various platforms.
@@ -18,6 +15,16 @@ Adhere strictly to these rules:
 7. **Facebook**: Provide a catchy, click-baity Title separate from the post body.
 `;
 
+// Helper to initialize the AI client lazily
+// This prevents the application from crashing on startup if the API key is missing
+const getAiClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey === 'undefined') {
+    throw new Error("API Key is missing. Please ensure 'API_KEY' is set in your .env file or environment variables.");
+  }
+  return new GoogleGenAI({ apiKey });
+};
+
 export const generateContent = async (
   textInput: string,
   mediaFile: { data: string; mimeType: string } | null,
@@ -26,6 +33,9 @@ export const generateContent = async (
   duration: string 
 ): Promise<GeneratedContent> => {
   
+  // Initialize client here to handle errors gracefully
+  const ai = getAiClient();
+
   // Using Gemini 3 Flash for maximum speed and low latency
   const model = "gemini-3-flash-preview";
   
@@ -115,6 +125,9 @@ export const generateContent = async (
 };
 
 export const generateSpeech = async (text: string): Promise<string> => {
+  // Initialize client here
+  const ai = getAiClient();
+  
   // Using Gemini 2.5 Flash for fast TTS
   const model = "gemini-2.5-flash-preview-tts";
 
