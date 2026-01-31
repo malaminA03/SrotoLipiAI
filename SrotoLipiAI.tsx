@@ -536,7 +536,7 @@ function SrotoLipiAI() {
                  </div>
 
                  <div className="text-center mt-auto pb-4 text-xs text-slate-400 flex items-center justify-center gap-1">
-                    <Copyright size={10} /> 2024 SrotoLipi AI. All Rights Reserved.
+                    <Copyright size={10} /> 2026 SrotoLipi AI. All Rights Reserved.
                  </div>
               </div>
 
