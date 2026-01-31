@@ -15,14 +15,16 @@ Adhere strictly to these rules:
 7. **Facebook**: Provide a catchy, click-baity Title separate from the post body.
 `;
 
+// Direct API Key from configuration or fallback
+// This ensures the key from vite.config.ts is used
+const API_KEY = process.env.API_KEY;
+
 // Helper to initialize the AI client lazily
-// This prevents the application from crashing on startup if the API key is missing
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey || apiKey === 'undefined') {
+  if (!API_KEY || API_KEY === 'undefined') {
     throw new Error("API Key is missing. Please ensure 'API_KEY' is set in your .env file or environment variables.");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: API_KEY });
 };
 
 export const generateContent = async (
