@@ -25,7 +25,8 @@ import {
   ChevronRight,
   ShieldAlert,
   Copyright,
-  Check
+  Check,
+  Download
 } from 'lucide-react';
 import { generateContent, generateSpeech } from './services/geminiService';
 import AudioVisualizer from './components/AudioVisualizer';
@@ -63,6 +64,7 @@ function SrotoLipiAI() {
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<GeneratedContent | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [audioDownloadUrl, setAudioDownloadUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'social' | 'youtube' | 'script'>('social');
   
   // History State
@@ -71,7 +73,7 @@ function SrotoLipiAI() {
     return saved ? JSON.parse(saved) : [];
   });
   
-  // Mobile drawer state (not used in new desktop layout but kept for compatibility)
+  // Mobile drawer state
   const [showMobileHistory, setShowMobileHistory] = useState(false);
 
   // Refs
@@ -84,6 +86,13 @@ function SrotoLipiAI() {
   useEffect(() => {
     localStorage.setItem('srotolipi_history', JSON.stringify(history));
   }, [history]);
+
+  // Clean up audio URL on unmount or new result
+  useEffect(() => {
+    return () => {
+      if (audioDownloadUrl) URL.revokeObjectURL(audioDownloadUrl);
+    };
+  }, [audioDownloadUrl]);
 
   // Handlers
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -137,6 +146,7 @@ function SrotoLipiAI() {
     }
 
     setIsLoading(true);
+    setAudioDownloadUrl(null); // Reset previous download
 
     try {
       let mediaData = null;
@@ -178,7 +188,7 @@ function SrotoLipiAI() {
 
     } catch (error) {
       console.error("Generation failed:", error);
-      alert("Failed to generate content. Please check if API Key is set in .env");
+      alert("Failed to generate content. Please check if API Key is set correctly.");
     } finally {
       setIsLoading(false);
     }
@@ -187,6 +197,7 @@ function SrotoLipiAI() {
   const restoreHistoryItem = (item: HistoryItem) => {
     setResult(item.data);
     setTone(item.tone);
+    setAudioDownloadUrl(null);
     if(window.innerWidth < 1024) setShowMobileHistory(false);
   };
 
@@ -204,6 +215,7 @@ function SrotoLipiAI() {
   const handleTTS = async () => {
     if (!result?.summary) return;
     
+    // Stop playback if currently playing
     if (isPlayingAudio) {
         if (audioSourceRef.current) {
             audioSourceRef.current.stop();
@@ -217,23 +229,39 @@ function SrotoLipiAI() {
       setIsPlayingAudio(true);
       const base64Audio = await generateSpeech(result.summary);
       
-      // Decode and play
+      // Decode Base64 to ArrayBuffer
       const binaryString = atob(base64Audio);
       const len = binaryString.length;
       const bytes = new Uint8Array(len);
       for (let i = 0; i < len; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
-      const arrayBuffer = bytes.buffer;
+      
+      // Create Blob for Download if not already created
+      if (!audioDownloadUrl) {
+          const blob = new Blob([bytes], { type: 'audio/mp3' });
+          const url = URL.createObjectURL(blob);
+          setAudioDownloadUrl(url);
+      }
 
+      // Setup Audio Context for Playback
       if (!audioContextRef.current) {
           audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       }
+
+      // Resume context if suspended (browser policy)
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
       
-      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+      // Decode audio data for playback
+      // We copy the buffer because decodeAudioData detaches the buffer
+      const audioBuffer = await audioContextRef.current.decodeAudioData(bytes.buffer.slice(0));
+      
       const source = audioContextRef.current.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(audioContextRef.current.destination);
+      
       source.onended = () => setIsPlayingAudio(false);
       source.start(0);
       audioSourceRef.current = source;
@@ -241,6 +269,7 @@ function SrotoLipiAI() {
     } catch (e) {
       console.error("TTS Playback failed", e);
       setIsPlayingAudio(false);
+      alert("Failed to play audio. Please try again.");
     }
   };
 
@@ -571,6 +600,18 @@ function SrotoLipiAI() {
                                             >
                                                 {isPlayingAudio ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
                                             </button>
+                                            
+                                            {audioDownloadUrl && (
+                                                <a 
+                                                    href={audioDownloadUrl} 
+                                                    download={`SrotoLipi-Audio-${Date.now()}.mp3`}
+                                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center shadow-md transition-all active:scale-95"
+                                                    title="Download Audio"
+                                                >
+                                                    <Download size={20} className="text-white" />
+                                                </a>
+                                            )}
+
                                             <div>
                                                 <div className="text-[10px] uppercase font-bold text-blue-300 tracking-wider">Audio Summary</div>
                                                 <div className="text-sm font-medium">Listen to AI overview</div>
