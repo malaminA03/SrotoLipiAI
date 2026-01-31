@@ -2,36 +2,25 @@
   "name": "srotolipi-ai",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "lucide-react": "^0.363.0",
-    "@google/genai": "^0.1.1",
+    "@google/genai": "*",
     "@mlc-ai/web-llm": "^0.2.72",
     "web-vitals": "^2.1.0"
   },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "start": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
   }
 }

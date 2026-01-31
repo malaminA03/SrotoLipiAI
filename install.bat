@@ -1,7 +1,7 @@
 @echo off
 echo SrotoLipi AI - Installing Packages...
 echo -------------------------------------
-echo Please wait while we install the necessary libraries...
+echo Fixing dependencies and installing latest versions...
 echo.
 
 call npm install
@@ -9,6 +9,7 @@ call npm install
 echo.
 echo -------------------------------------
 echo Installation Complete!
-echo You can now restart your development server (npm start).
+echo Starting the application server...
 echo.
-pause
+
+call npm start
