@@ -15,16 +15,15 @@ Adhere strictly to these rules:
 7. **Facebook**: Provide a catchy, click-baity Title separate from the post body.
 `;
 
-// Direct API Key from configuration or fallback
-// This ensures the key from vite.config.ts is used
-const API_KEY = process.env.API_KEY;
-
 // Helper to initialize the AI client lazily
-const getAiClient = () => {
-  if (!API_KEY || API_KEY === 'undefined') {
-    throw new Error("API Key is missing. Please ensure 'API_KEY' is set in your .env file or environment variables.");
+// Accepts an optional userApiKey. If provided, it overrides the default process.env.API_KEY
+const getAiClient = (userApiKey?: string) => {
+  const key = userApiKey || process.env.API_KEY;
+  
+  if (!key || key === 'undefined') {
+    throw new Error("API Key is missing. Please set it in Settings or ensure 'API_KEY' is configured.");
   }
-  return new GoogleGenAI({ apiKey: API_KEY });
+  return new GoogleGenAI({ apiKey: key });
 };
 
 export const generateContent = async (
@@ -32,11 +31,12 @@ export const generateContent = async (
   mediaFile: { data: string; mimeType: string } | null,
   audioInput: { data: string; mimeType: string } | null,
   tone: Tone,
-  duration: string 
+  duration: string,
+  userApiKey?: string
 ): Promise<GeneratedContent> => {
   
   // Initialize client here to handle errors gracefully
-  const ai = getAiClient();
+  const ai = getAiClient(userApiKey);
 
   // Using Gemini 3 Flash for maximum speed and low latency
   const model = "gemini-3-flash-preview";
@@ -126,9 +126,9 @@ export const generateContent = async (
   }
 };
 
-export const generateSpeech = async (text: string): Promise<string> => {
+export const generateSpeech = async (text: string, userApiKey?: string): Promise<string> => {
   // Initialize client here
-  const ai = getAiClient();
+  const ai = getAiClient(userApiKey);
   
   // Using Gemini 2.5 Flash for fast TTS
   const model = "gemini-2.5-flash-preview-tts";

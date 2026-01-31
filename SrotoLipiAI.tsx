@@ -26,7 +26,9 @@ import {
   ShieldAlert,
   Copyright,
   Check,
-  Download
+  Download,
+  Settings,
+  Key
 } from 'lucide-react';
 import { generateContent, generateSpeech } from './services/geminiService';
 import AudioVisualizer from './components/AudioVisualizer';
@@ -67,6 +69,11 @@ function SrotoLipiAI() {
   const [audioDownloadUrl, setAudioDownloadUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'social' | 'youtube' | 'script'>('social');
   
+  // Settings & API Key
+  const [showSettings, setShowSettings] = useState(false);
+  const [userApiKey, setUserApiKey] = useState('');
+  const [tempApiKey, setTempApiKey] = useState('');
+
   // History State
   const [history, setHistory] = useState<HistoryItem[]>(() => {
     const saved = localStorage.getItem('srotolipi_history');
@@ -87,6 +94,14 @@ function SrotoLipiAI() {
     localStorage.setItem('srotolipi_history', JSON.stringify(history));
   }, [history]);
 
+  useEffect(() => {
+    const savedKey = localStorage.getItem('srotolipi_api_key');
+    if (savedKey) {
+      setUserApiKey(savedKey);
+      setTempApiKey(savedKey);
+    }
+  }, []);
+
   // Clean up audio URL on unmount or new result
   useEffect(() => {
     return () => {
@@ -95,6 +110,19 @@ function SrotoLipiAI() {
   }, [audioDownloadUrl]);
 
   // Handlers
+  const handleSaveApiKey = () => {
+    localStorage.setItem('srotolipi_api_key', tempApiKey.trim());
+    setUserApiKey(tempApiKey.trim());
+    setShowSettings(false);
+  };
+
+  const handleRemoveApiKey = () => {
+    localStorage.removeItem('srotolipi_api_key');
+    setUserApiKey('');
+    setTempApiKey('');
+    setShowSettings(false);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setSelectedFile(e.target.files[0]);
@@ -169,7 +197,8 @@ function SrotoLipiAI() {
          };
       }
 
-      const generatedData = await generateContent(inputText, mediaData, audioData, tone, duration);
+      // Pass userApiKey (if exists) to the service
+      const generatedData = await generateContent(inputText, mediaData, audioData, tone, duration, userApiKey);
       setResult(generatedData);
 
       // Add to History
@@ -186,9 +215,9 @@ function SrotoLipiAI() {
 
       setHistory(prev => [newHistoryItem, ...prev]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation failed:", error);
-      alert("Failed to generate content. Please check if API Key is set correctly.");
+      alert(`Failed to generate content. ${error.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -227,7 +256,8 @@ function SrotoLipiAI() {
 
     try {
       setIsPlayingAudio(true);
-      const base64Audio = await generateSpeech(result.summary);
+      // Pass userApiKey to service
+      const base64Audio = await generateSpeech(result.summary, userApiKey);
       
       // Decode Base64 to ArrayBuffer
       const binaryString = atob(base64Audio);
@@ -360,9 +390,16 @@ function SrotoLipiAI() {
         </div>
 
         {/* Sidebar Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50">
-           <div className="flex items-center gap-2 text-xs text-slate-500">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex flex-col gap-2">
+           <button 
+             onClick={() => setShowSettings(true)}
+             className="flex items-center justify-between w-full px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+           >
+             <span className="flex items-center gap-2"><Settings size={14} /> Settings & API Key</span>
+             {userApiKey && <span className="h-2 w-2 rounded-full bg-green-500" title="Custom Key Active"></span>}
+           </button>
+           <div className="flex items-center gap-2 text-xs text-slate-400 px-1">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
               System Online • v2.1.0
            </div>
         </div>
@@ -377,9 +414,14 @@ function SrotoLipiAI() {
                 <Zap className="text-blue-600" size={20} />
                 <span className="font-bold text-slate-800">SrotoLipi AI</span>
             </div>
-            <button onClick={() => setShowMobileHistory(true)} className="p-2 bg-slate-100 rounded-full">
-                <History size={20} />
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-100 rounded-full text-slate-600">
+                  <Settings size={20} />
+              </button>
+              <button onClick={() => setShowMobileHistory(true)} className="p-2 bg-slate-100 rounded-full">
+                  <History size={20} />
+              </button>
+            </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 lg:p-8">
@@ -748,6 +790,76 @@ function SrotoLipiAI() {
                     ))}
                 </div>
             </div>
+        </div>
+      )}
+
+      {/* --- API KEY SETTINGS MODAL --- */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                  <Key size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-800">API Settings</h3>
+                  <p className="text-xs text-slate-500">Configure your own Google Gemini API Key</p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                <div className="text-sm text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100">
+                  By default, SrotoLipi AI uses a shared quota. For unlimited personal use, you can provide your own API key.
+                </div>
+                
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-1.5">Gemini API Key</label>
+                  <input 
+                    type="password" 
+                    value={tempApiKey}
+                    onChange={(e) => setTempApiKey(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full bg-white border border-slate-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                  />
+                  <div className="mt-2 text-right">
+                    <a 
+                      href="https://aistudio.google.com/app/apikey" 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium hover:underline"
+                    >
+                      Get an API Key →
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-8">
+                {userApiKey && (
+                  <button 
+                    onClick={handleRemoveApiKey}
+                    className="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-sm font-bold transition-colors"
+                  >
+                    Remove Key
+                  </button>
+                )}
+                <button 
+                  onClick={handleSaveApiKey}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl shadow-lg shadow-blue-600/20 text-sm font-bold transition-all active:scale-[0.98]"
+                >
+                  Save Configuration
+                </button>
+              </div>
+            </div>
+            <button 
+              onClick={() => setShowSettings(false)} 
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
       )}
 

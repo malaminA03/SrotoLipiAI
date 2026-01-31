@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     define: {
       // Polyfill process.env.API_KEY so it works in the browser
       // Using the provided key as a fallback if not found in .env
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || "AIzaSyAoW1O-45_dLJ3vl-9bhSjduAdHKD5SGJY")
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || "AIzaSyCQfBk3BOujIKeN6ziq2yzajZs73GOfPiw")
     },
     server: {
       port: 3000,
