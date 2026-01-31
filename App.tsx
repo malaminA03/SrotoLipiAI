@@ -46,6 +46,7 @@ function App() {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; url: string } | null>(null);
   const [tone, setTone] = useState<Tone>(Tone.CREATIVE);
+  const [duration, setDuration] = useState<string>('Short (< 2 min)');
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<GeneratedContent | null>(null);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
@@ -132,7 +133,7 @@ function App() {
          };
       }
 
-      const generatedData = await generateContent(inputText, mediaData, audioData, tone);
+      const generatedData = await generateContent(inputText, mediaData, audioData, tone, duration);
       setResult(generatedData);
     } catch (error) {
       console.error("Generation failed:", error);
@@ -300,8 +301,8 @@ function App() {
             )}
 
             {/* Controls */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-1">
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Tone</label>
                 <select 
                   value={tone}
@@ -313,26 +314,38 @@ function App() {
                   ))}
                 </select>
               </div>
-              <div className="col-span-2 flex items-end">
-                <button
-                    onClick={handleGenerate}
-                    disabled={isLoading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Duration</label>
+                <select 
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-500 outline-none"
                 >
-                    {isLoading ? (
-                    <>
-                        <Loader2 size={18} className="animate-spin" />
-                        Generating...
-                    </>
-                    ) : (
-                    <>
-                        <Sparkles size={18} />
-                        Generate
-                    </>
-                    )}
-                </button>
+                  <option value="Short (< 2 min)">Short (&lt; 2 min)</option>
+                  <option value="Medium (5 min)">Medium (5 min)</option>
+                  <option value="Long (10 min)">Long (10 min)</option>
+                  <option value="Extra Long (15 min)">Extra Long (15 min)</option>
+                </select>
               </div>
             </div>
+
+            <button
+                onClick={handleGenerate}
+                disabled={isLoading}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+                {isLoading ? (
+                <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Generating...
+                </>
+                ) : (
+                <>
+                    <Sparkles size={18} />
+                    Generate
+                </>
+                )}
+            </button>
           </div>
         </div>
 

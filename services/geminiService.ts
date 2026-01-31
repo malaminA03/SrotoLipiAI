@@ -13,13 +13,17 @@ Adhere strictly to these rules:
 2. The tone must match the user's selection.
 3. The output must be returned in strictly valid JSON format matching the schema provided.
 4. For video scripts, provide detailed visual cues and engaging voiceovers.
+5. If a specific duration is requested for the video script, ensure the scene count and word count of the voiceover matches that approximate timing.
+6. **YouTube Description**: Must be VERY LONG, detailed, and comprehensive (at least 300 words), covering the topic in depth with chapters/timestamps placeholders if applicable.
+7. **Facebook**: Provide a catchy, click-baity Title separate from the post body.
 `;
 
 export const generateContent = async (
   textInput: string,
   mediaFile: { data: string; mimeType: string } | null,
   audioInput: { data: string; mimeType: string } | null,
-  tone: Tone
+  tone: Tone,
+  duration: string 
 ): Promise<GeneratedContent> => {
   
   // Using Gemini 3 Flash for maximum speed and low latency
@@ -28,10 +32,13 @@ export const generateContent = async (
   const parts: any[] = [];
 
   let promptText = `Generate content with a ${tone} tone.`;
+  promptText += `\nTarget Video Script Duration: ${duration}`;
+  
   if (textInput) promptText += `\nTopic/Context: ${textInput}`;
   
   parts.push({ text: promptText });
 
+  // Handle Uploaded File (Image, Video, or Audio)
   if (mediaFile) {
     parts.push({
       inlineData: {
@@ -39,8 +46,17 @@ export const generateContent = async (
         mimeType: mediaFile.mimeType
       }
     });
+    
+    if (mediaFile.mimeType.startsWith('audio/')) {
+      parts.push({ text: "Context: The attached media is an audio file. Listen to the speech/sound carefully and use it as the primary source material." });
+    } else if (mediaFile.mimeType.startsWith('image/')) {
+      parts.push({ text: "Context: Analyze this image visually." });
+    } else if (mediaFile.mimeType.startsWith('video/')) {
+      parts.push({ text: "Context: Analyze this video visually and audibly." });
+    }
   }
 
+  // Handle Recorded Audio
   if (audioInput) {
     parts.push({
       inlineData: {
@@ -48,7 +64,7 @@ export const generateContent = async (
         mimeType: audioInput.mimeType
       }
     });
-    parts.push({ text: "Audio Context: Please listen to this audio and use it as the source material." });
+    parts.push({ text: "Audio Context: Please listen to this recorded audio and use it as the source material." });
   }
 
   try {
@@ -61,12 +77,13 @@ export const generateContent = async (
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            facebookPost: { type: Type.STRING, description: "Engaging Facebook post with emojis." },
+            facebookTitle: { type: Type.STRING, description: "A catchy, attention-grabbing title for Facebook." },
+            facebookPost: { type: Type.STRING, description: "Engaging Facebook post body with emojis." },
             instagramCaption: { type: Type.STRING, description: "Short, catchy caption with hashtags." },
             linkedinPost: { type: Type.STRING, description: "Professional and insightful post." },
             twitterPost: { type: Type.STRING, description: "Concise tweet under 280 chars." },
             youtubeTitle: { type: Type.STRING, description: "SEO optimized click-worthy title." },
-            youtubeDescription: { type: Type.STRING, description: "Detailed video description." },
+            youtubeDescription: { type: Type.STRING, description: "A very long, detailed, and comprehensive video description (300+ words)." },
             summary: { type: Type.STRING, description: "A brief summary of the content for audio reading." },
             videoScript: {
               type: Type.ARRAY,
@@ -81,7 +98,7 @@ export const generateContent = async (
               }
             }
           },
-          required: ["facebookPost", "instagramCaption", "linkedinPost", "twitterPost", "youtubeTitle", "youtubeDescription", "videoScript", "summary"]
+          required: ["facebookTitle", "facebookPost", "instagramCaption", "linkedinPost", "twitterPost", "youtubeTitle", "youtubeDescription", "videoScript", "summary"]
         }
       }
     });

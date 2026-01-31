@@ -3,7 +3,13 @@ export enum Tone {
   CREATIVE = 'Creative',
   CASUAL = 'Casual',
   WITTY = 'Witty',
-  EMOTIONAL = 'Emotional'
+  EMOTIONAL = 'Emotional',
+  HORROR = 'Horror',
+  THRILLER = 'Thriller',
+  MYSTERY = 'Mystery',
+  SCI_FI = 'Sci-Fi',
+  DRAMATIC = 'Dramatic',
+  CINEMATIC = 'Cinematic'
 }
 
 export interface VideoScriptScene {
@@ -14,6 +20,7 @@ export interface VideoScriptScene {
 }
 
 export interface GeneratedContent {
+  facebookTitle: string; // Added Title
   facebookPost: string;
   instagramCaption: string;
   linkedinPost: string;
@@ -22,6 +29,14 @@ export interface GeneratedContent {
   youtubeDescription: string;
   videoScript: VideoScriptScene[];
   summary: string; // Used for TTS generation
+}
+
+export interface HistoryItem {
+  id: string;
+  timestamp: number;
+  preview: string; // Short text or "Media Input"
+  tone: Tone;
+  data: GeneratedContent;
 }
 
 export interface ProcessingState {
