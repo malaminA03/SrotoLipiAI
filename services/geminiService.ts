@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { GeneratedContent, Tone } from "../types";
 
-// Initialize client once
+// Initialize client with the API Key from environment
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
@@ -13,7 +13,6 @@ Adhere strictly to these rules:
 2. The tone must match the user's selection.
 3. The output must be returned in strictly valid JSON format matching the schema provided.
 4. For video scripts, provide detailed visual cues and engaging voiceovers.
-5. If the input is audio, transcribe the key intent and generate content based on that.
 `;
 
 export const generateContent = async (
@@ -23,11 +22,11 @@ export const generateContent = async (
   tone: Tone
 ): Promise<GeneratedContent> => {
   
+  // Using Gemini 3 Flash for maximum speed and low latency
   const model = "gemini-3-flash-preview";
   
   const parts: any[] = [];
 
-  // Add System-like instruction context in the user prompt as well to ensure adherence
   let promptText = `Generate content with a ${tone} tone.`;
   if (textInput) promptText += `\nTopic/Context: ${textInput}`;
   
@@ -43,14 +42,13 @@ export const generateContent = async (
   }
 
   if (audioInput) {
-    // Treat recorded audio as a multimodal input
     parts.push({
       inlineData: {
         data: audioInput.data,
         mimeType: audioInput.mimeType
       }
     });
-    parts.push({ text: "Please listen to the attached audio, understand the context, and generate the content based on it." });
+    parts.push({ text: "Audio Context: Please listen to this audio and use it as the source material." });
   }
 
   try {
@@ -100,8 +98,7 @@ export const generateContent = async (
 };
 
 export const generateSpeech = async (text: string): Promise<string> => {
-
-  // Using Gemini 2.5 Flash for TTS
+  // Using Gemini 2.5 Flash for fast TTS
   const model = "gemini-2.5-flash-preview-tts";
 
   try {
@@ -114,7 +111,7 @@ export const generateSpeech = async (text: string): Promise<string> => {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
           voiceConfig: {
-            prebuiltVoiceConfig: { voiceName: 'Kore' } // Kore is usually a balanced voice
+            prebuiltVoiceConfig: { voiceName: 'Kore' }
           }
         }
       }

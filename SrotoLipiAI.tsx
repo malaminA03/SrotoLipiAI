@@ -1,495 +1,485 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { CreateMLCEngine, MLCEngine } from "@mlc-ai/web-llm";
+import React, { useState, useRef } from 'react';
 import { 
-  Send, 
-  Sparkles, 
-  Loader2, 
+  Mic, 
+  Image as ImageIcon, 
+  Video, 
   Copy, 
-  RefreshCw, 
-  Settings2, 
-  Terminal, 
-  AlertTriangle,
-  CheckCircle2,
-  Trash2,
-  StopCircle,
-  Youtube
+  Play, 
+  Pause, 
+  Youtube, 
+  Facebook, 
+  Linkedin, 
+  Twitter, 
+  FileVideo,
+  Sparkles,
+  Loader2,
+  Volume2,
+  Check,
+  Zap
 } from 'lucide-react';
+import { generateContent, generateSpeech } from './services/geminiService';
+import AudioVisualizer from './components/AudioVisualizer';
+import { GeneratedContent, Tone } from './types';
 
-// --- Types ---
-type Tone = 'Professional' | 'Creative' | 'Casual';
-
-interface Message {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-}
-
-interface InitProgress {
-  progress: number;
-  text: string;
-}
-
-// --- Constants ---
-// Using Llama-3.2-3B-Instruct for a balance of speed (browser) and Bengali reasoning capability.
-const SELECTED_MODEL = "Llama-3.2-3B-Instruct-q4f16_1-MLC";
-
-const PROMPT_TEMPLATES = [
-  { 
-    label: "YouTube Script", 
-    text: `একটি প্রফেশনাল ইউটিউব ভিডিও স্ক্রিপ্ট তৈরি করো।
-বিষয়: [এখানে বিষয় লিখুন]
-
-স্ট্রাকচার:
-১. হুক (Hook) - দর্শকদের মনোযোগ আকর্ষণের জন্য।
-২. ইন্ট্রো (Introduction)
-৩. মূল কন্টেন্ট (৩-৫টি পয়েন্ট)
-৪. কল টু অ্যাকশন (CTA)
-৫. আউট্রো (Outro)
-
-নির্দেশনা:
-- প্রতিটি সেকশনের জন্য 'Visuals' (স্ক্রিনে যা দেখা যাবে) এবং 'Narration' (ভয়েসওভার) আলাদা করে লিখবে।
-- আউটপুট ফরম্যাট: সুন্দর মার্কডাউন (Markdown)।` 
-  },
-  { label: "Blog Post", text: "একটি ব্লগের জন্য বিস্তারিত লেখা তৈরি করো বিষয়:" },
-  { label: "Social Caption", text: "ফেসবুক বা ইনস্টাগ্রামের জন্য একটি আকর্ষণীয় ক্যাপশন লিখো:" },
-  { label: "Email", text: "একটি প্রফেশনাল ইমেইল ড্রাফট করো বিষয়:" },
-  { label: "Summary", text: "এই টেক্সটটি সহজ বাংলায় সারসংক্ষেপ করো:" }
-];
-
-const SrotoLipiAI: React.FC = () => {
-  // --- State ---
-  const [engine, setEngine] = useState<MLCEngine | null>(null);
-  const [isModelLoading, setIsModelLoading] = useState(false);
-  const [isModelLoaded, setIsModelLoaded] = useState(false);
-  const [initProgress, setInitProgress] = useState<InitProgress>({ progress: 0, text: '' });
-  const [error, setError] = useState<string | null>(null);
-
-  const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [tone, setTone] = useState<Tone>('Creative');
-  const [showSidebar, setShowSidebar] = useState(true);
-
-  // Refs for auto-scrolling and aborting
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  // --- Initialization ---
-
-  const initializeEngine = useCallback(async () => {
-    try {
-      setIsModelLoading(true);
-      setError(null);
-
-      const initProgressCallback = (report: { progress: number; text: string }) => {
-        setInitProgress({
-          progress: report.progress,
-          text: report.text,
-        });
-      };
-
-      const newEngine = await CreateMLCEngine(SELECTED_MODEL, {
-        initProgressCallback,
-        logLevel: "INFO", // Keep console clean in prod
+// Utility to convert file to Base64
+const fileToGenerativePart = async (file: File): Promise<{ data: string; mimeType: string }> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64Data = reader.result as string;
+      const base64Content = base64Data.split(',')[1];
+      resolve({
+        data: base64Content,
+        mimeType: file.type,
       });
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
 
-      setEngine(newEngine);
-      setIsModelLoaded(true);
-    } catch (err: any) {
-      console.error("Failed to load model:", err);
-      // Handle low memory or WebGPU support issues
-      if (err.message?.includes("WebGPU")) {
-        setError("আপনার ব্রাউজারে WebGPU সাপোর্ট নেই। দয়া করে Chrome বা Edge এর লেটেস্ট ভার্সন ব্যবহার করুন।");
-      } else {
-        setError("মডেল লোড করতে সমস্যা হয়েছে। দয়া করে পেজটি রিফ্রেশ করুন অথবা মেমরি চেক করুন।");
-      }
-    } finally {
-      setIsModelLoading(false);
+function SrotoLipiAI() {
+  // State
+  const [inputText, setInputText] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
+  const [recordedAudio, setRecordedAudio] = useState<{ blob: Blob; url: string } | null>(null);
+  const [tone, setTone] = useState<Tone>(Tone.CREATIVE);
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<GeneratedContent | null>(null);
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [activeTab, setActiveTab] = useState<'social' | 'youtube' | 'script'>('social');
+  
+  // Refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  // Handlers
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setSelectedFile(e.target.files[0]);
+      setRecordedAudio(null); // Clear audio if file selected
     }
-  }, []);
-
-  // --- Core Logic ---
-
-  const getSystemPrompt = (selectedTone: Tone): string => {
-    let toneInstruction = "";
-    switch (selectedTone) {
-      case 'Professional':
-        toneInstruction = "Use formal, respectful, and sophisticated Bengali. Avoid slang. Be precise and structured.";
-        break;
-      case 'Creative':
-        toneInstruction = "Use descriptive, engaging, and rich Bengali vocabulary. Be imaginative and storytelling-oriented. Focus on visual storytelling.";
-        break;
-      case 'Casual':
-        toneInstruction = "Use friendly, conversational, and everyday Bengali. You can use common idioms but keep it polite.";
-        break;
-    }
-
-    return `You are SrotoLipi AI, an expert content creator and scriptwriter. 
-    IMPORTANT: You must ALWAYS answer in the BENGALI language. 
-    Do not answer in English unless explicitly asked to translate.
-    ${toneInstruction}
-    When asked for scripts, ensure you provide detailed visual instructions and natural narration.`;
   };
 
-  const handleSend = async (overrideInput?: string) => {
-    const textToSend = overrideInput || input;
-    if ((!textToSend.trim()) || !engine || isGenerating) return;
-
-    // Reset abort controller
-    abortControllerRef.current = new AbortController();
-
-    const newMessages: Message[] = [
-      ...messages,
-      { role: 'user', content: textToSend }
-    ];
-
-    setMessages(newMessages);
-    setInput('');
-    setIsGenerating(true);
-    setError(null);
-
-    // Provide context window (last 5 messages + system prompt)
-    const contextMessages: Message[] = [
-      { role: 'system', content: getSystemPrompt(tone) },
-      ...newMessages.slice(-5) // Simple context window management
-    ];
-
-    try {
-      const chunks = await engine.chat.completions.create({
-        messages: contextMessages,
-        stream: true,
-        temperature: tone === 'Creative' ? 0.7 : 0.5,
-        max_tokens: 4000, // Increased for long scripts
-      });
-
-      // Add placeholder for assistant response
-      let fullResponse = "";
-      setMessages(prev => [...prev, { role: 'assistant', content: "" }]);
-
-      for await (const chunk of chunks) {
-        // Check for abort
-        if (abortControllerRef.current?.signal.aborted) {
-            break;
-        }
-
-        const delta = chunk.choices[0]?.delta?.content || "";
-        fullResponse += delta;
+  const toggleRecording = async () => {
+    if (isRecording) {
+      mediaRecorderRef.current?.stop();
+      setIsRecording(false);
+      // Stop tracks to release mic
+      audioStream?.getTracks().forEach(track => track.stop());
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        setAudioStream(stream);
         
-        // Update the last message with new token
-        setMessages(prev => {
-          const updated = [...prev];
-          updated[updated.length - 1] = { role: 'assistant', content: fullResponse };
-          return updated;
-        });
+        const mediaRecorder = new MediaRecorder(stream);
+        mediaRecorderRef.current = mediaRecorder;
+        audioChunksRef.current = [];
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); 
+          const audioUrl = URL.createObjectURL(audioBlob);
+          setRecordedAudio({ blob: audioBlob, url: audioUrl });
+          setSelectedFile(null); // Clear file if audio recorded
+        };
+
+        mediaRecorder.start();
+        setIsRecording(true);
+      } catch (err) {
+        console.error("Error accessing microphone:", err);
+        alert("Microphone access denied or not available.");
       }
-    } catch (err: any) {
-      console.error("Generation error:", err);
-      setError("AI উত্তর তৈরি করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।");
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!inputText && !selectedFile && !recordedAudio) {
+      alert("Please provide some input (Text, Image, Video, or Audio).");
+      return;
+    }
+
+    setIsLoading(true);
+    setResult(null);
+
+    try {
+      let mediaData = null;
+      let audioData = null;
+
+      if (selectedFile) {
+        mediaData = await fileToGenerativePart(selectedFile);
+      }
+
+      if (recordedAudio) {
+         // Convert blob to base64
+         const reader = new FileReader();
+         const base64Audio = await new Promise<string>((resolve) => {
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(recordedAudio.blob);
+         });
+         audioData = {
+            data: base64Audio.split(',')[1],
+            mimeType: recordedAudio.blob.type || 'audio/webm' // Default fallback
+         };
+      }
+
+      const generatedData = await generateContent(inputText, mediaData, audioData, tone);
+      setResult(generatedData);
+    } catch (error) {
+      console.error("Generation failed:", error);
+      alert("Failed to generate content. Please check if API Key is set in .env");
     } finally {
-      setIsGenerating(false);
-      abortControllerRef.current = null;
+      setIsLoading(false);
     }
   };
 
-  const stopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      setIsGenerating(false);
+  const handleTTS = async () => {
+    if (!result?.summary) return;
+    
+    if (isPlayingAudio) {
+        if (audioSourceRef.current) {
+            audioSourceRef.current.stop();
+            audioSourceRef.current = null;
+        }
+        setIsPlayingAudio(false);
+        return;
     }
-  };
 
-  const handleRegenerate = () => {
-    if (messages.length === 0) return;
-    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
-    if (lastUserMessage) {
-        // Remove last assistant message if it exists
-        const cleanMessages = messages.length > 0 && messages[messages.length - 1].role === 'assistant' 
-            ? messages.slice(0, -1) 
-            : messages;
-        setMessages(cleanMessages); 
-        handleSend(lastUserMessage.content); 
+    try {
+      setIsPlayingAudio(true);
+      const base64Audio = await generateSpeech(result.summary);
+      
+      // Decode and play
+      const binaryString = atob(base64Audio);
+      const len = binaryString.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      const arrayBuffer = bytes.buffer;
+
+      if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      const audioBuffer = await audioContextRef.current.decodeAudioData(arrayBuffer);
+      const source = audioContextRef.current.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContextRef.current.destination);
+      source.onended = () => setIsPlayingAudio(false);
+      source.start(0);
+      audioSourceRef.current = source;
+
+    } catch (e) {
+      console.error("TTS Playback failed", e);
+      setIsPlayingAudio(false);
     }
-  };
-
-  const clearChat = () => {
-    setMessages([]);
-    setError(null);
   };
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
   };
 
-  // --- Effects ---
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isGenerating]);
-
-  // --- UI Components ---
-
-  const LoadingScreen = () => (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-8 space-y-6">
-      <div className="relative">
-        <div className="absolute inset-0 bg-blue-500/20 blur-xl rounded-full"></div>
-        <div className="w-20 h-20 bg-white rounded-2xl shadow-xl flex items-center justify-center relative z-10 border border-slate-100">
-          <Loader2 size={40} className="text-blue-600 animate-spin" />
-        </div>
-      </div>
-      <div className="max-w-md w-full space-y-2">
-        <h2 className="text-xl font-bold text-slate-800">AI ইঞ্জিন লোড হচ্ছে...</h2>
-        <p className="text-sm text-slate-500">এটি আপনার ব্রাউজারে সম্পূর্ণ লোকালভাবে চলবে। প্রথমবার লোড হতে একটু সময় লাগতে পারে (1.7GB)।</p>
-        
-        <div className="w-full bg-slate-200 rounded-full h-2.5 mt-4 overflow-hidden">
-          <div 
-            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-out" 
-            style={{ width: `${initProgress.progress * 100}%` }}
-          ></div>
-        </div>
-        <p className="text-xs text-slate-400 font-mono pt-2">{initProgress.text}</p>
-      </div>
-      {error && (
-        <div className="p-4 bg-red-50 text-red-600 rounded-lg text-sm border border-red-100 flex items-center gap-2">
-           <AlertTriangle size={16} /> {error}
-        </div>
-      )}
-    </div>
+  // UI Components helpers
+  const TabButton = ({ id, label, icon: Icon }: any) => (
+    <button
+      onClick={() => setActiveTab(id)}
+      className={`flex items-center gap-2 px-6 py-3 font-medium text-sm transition-all border-b-2 ${
+        activeTab === id 
+          ? 'border-blue-600 text-blue-600' 
+          : 'border-transparent text-slate-500 hover:text-slate-700'
+      }`}
+    >
+      <Icon size={18} />
+      <span>{label}</span>
+    </button>
   );
-
-  const IntroScreen = () => (
-    <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-6 opacity-80">
-       <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg text-white mb-4">
-          <Sparkles size={32} />
-       </div>
-       <h1 className="text-2xl font-bold text-slate-800">SrotoLipi AI - লোকাল ইঞ্জিন</h1>
-       <p className="max-w-lg text-slate-500 leading-relaxed">
-          আপনার ব্যক্তিগত কন্টেন্ট অ্যাসিস্ট্যান্ট। কোনো সার্ভার নেই, কোনো ডেটা লিক নেই। 
-          সম্পূর্ণ অফলাইন-রেডি AI যা আপনার ব্রাউজারে চলে।
-       </p>
-       <button 
-          onClick={initializeEngine}
-          className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition-all active:scale-95 flex items-center gap-2"
-       >
-          <Terminal size={18} />
-          ইঞ্জিন স্টার্ট করুন
-       </button>
-       <p className="text-xs text-slate-400 mt-8">Powered by WebLLM & Llama 3.2</p>
-    </div>
-  );
-
-  // --- Render ---
-
-  if (!isModelLoaded && !isModelLoading) {
-     return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-           <IntroScreen />
-        </div>
-     );
-  }
-
-  if (isModelLoading) {
-    return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-            <LoadingScreen />
-        </div>
-    );
-  }
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-900 pb-12 font-sans">
       
-      {/* Sidebar Controls */}
-      <div className={`${showSidebar ? 'w-80' : 'w-0'} bg-white border-r border-slate-200 transition-all duration-300 flex flex-col overflow-hidden shadow-xl z-20`}>
-        <div className="p-5 border-b border-slate-100 flex items-center gap-2">
-            <div className="bg-blue-600 p-1.5 rounded-lg text-white"><Sparkles size={16} /></div>
-            <span className="font-bold text-slate-800">SrotoLipi AI</span>
+      {/* Simple Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-600 text-white p-2 rounded-lg">
+              <Zap size={20} fill="currentColor" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">SrotoLipi AI</h1>
+              <p className="text-xs text-slate-500">Super Fast Content Factory</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-sm">
+             <div className="flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-full border border-green-100">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                <span className="text-xs font-semibold">Online (Cloud)</span>
+             </div>
+             <span className="hidden md:inline text-slate-500 text-xs">Gemini 3 Flash</span>
+          </div>
         </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        <div className="flex-1 overflow-y-auto p-5 space-y-8">
-            {/* Tone Selector */}
-            <div>
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block flex items-center gap-1">
-                    <Settings2 size={12} /> Tone Control
-                </label>
-                <div className="space-y-2">
-                    {(['Professional', 'Creative', 'Casual'] as Tone[]).map((t) => (
-                        <button
-                            key={t}
-                            onClick={() => setTone(t)}
-                            className={`w-full text-left px-4 py-3 rounded-xl border transition-all text-sm font-medium flex items-center justify-between ${
-                                tone === t 
-                                ? 'bg-blue-50 border-blue-500 text-blue-700 shadow-sm' 
-                                : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                            }`}
-                        >
-                            {t}
-                            {tone === t && <CheckCircle2 size={16} />}
-                        </button>
-                    ))}
-                </div>
+        {/* LEFT COLUMN: INPUT ZONE */}
+        <div className="lg:col-span-5 space-y-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-4 text-slate-800 flex items-center gap-2">
+                <Sparkles size={18} className="text-blue-500" />
+                Create New Content
+            </h2>
+
+            {/* Text Input */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-slate-700 mb-1">Topic or Context (Bangla/English)</label>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Ex: A promotional post for a new organic tea brand..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg p-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none h-32 text-sm text-slate-800 placeholder:text-slate-400"
+              />
             </div>
 
-            {/* Templates */}
-            <div>
-                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 block">Quick Prompts</label>
-                 <div className="grid grid-cols-1 gap-2">
-                    {PROMPT_TEMPLATES.map((tpl, idx) => (
-                        <button
-                            key={idx}
-                            onClick={() => {
-                                setInput(tpl.text);
-                                textareaRef.current?.focus();
-                            }}
-                            className="text-left px-3 py-2.5 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs border border-slate-200 transition-colors flex items-center gap-2"
-                        >
-                            {tpl.label === "YouTube Script" && <Youtube size={14} className="text-red-500" />}
-                            {tpl.label}
-                        </button>
-                    ))}
-                 </div>
+            {/* Media Upload & Mic */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+               {/* File Input */}
+               <div className="relative">
+                 <input 
+                   type="file" 
+                   id="file-upload" 
+                   className="hidden" 
+                   accept="image/*,video/*"
+                   onChange={handleFileChange}
+                 />
+                 <label 
+                   htmlFor="file-upload"
+                   className={`flex flex-col items-center justify-center h-20 rounded-lg border border-dashed cursor-pointer transition-all ${
+                     selectedFile 
+                       ? 'border-blue-500 bg-blue-50 text-blue-700' 
+                       : 'border-slate-300 hover:border-blue-400 hover:bg-slate-50 text-slate-500'
+                   }`}
+                 >
+                   {selectedFile ? (
+                      selectedFile.type.startsWith('image') ? <ImageIcon size={20} /> : <Video size={20} />
+                   ) : (
+                      <ImageIcon size={20} className="mb-1" />
+                   )}
+                   <span className="text-xs font-medium truncate max-w-[90%]">
+                     {selectedFile ? selectedFile.name : 'Upload Image/Video'}
+                   </span>
+                 </label>
+               </div>
+
+               {/* Mic Input */}
+               <button
+                 onClick={toggleRecording}
+                 className={`flex flex-col items-center justify-center h-20 rounded-lg border transition-all ${
+                   isRecording 
+                     ? 'border-red-500 bg-red-50 text-red-600 animate-pulse' 
+                     : recordedAudio 
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-slate-300 hover:border-slate-400 hover:bg-slate-50 text-slate-500'
+                 }`}
+               >
+                 <Mic size={20} className="mb-1" />
+                 <span className="text-xs font-medium">
+                   {isRecording ? 'Stop Recording' : recordedAudio ? 'Audio Saved' : 'Record Voice'}
+                 </span>
+               </button>
             </div>
 
-            {/* Status */}
-            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                <div className="flex items-center gap-2 mb-1">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                    <span className="text-xs font-bold text-slate-700">System Ready</span>
+            {/* Audio Visualizer */}
+            {isRecording && (
+                <div className="mb-6">
+                   <AudioVisualizer stream={audioStream} isActive={isRecording} />
                 </div>
-                <p className="text-[10px] text-slate-400">Model: Llama 3.2 3B Quantized</p>
-                <p className="text-[10px] text-slate-400">Memory: Browser/WebGPU</p>
+            )}
+
+            {/* Controls */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-1">
+                <label className="block text-xs font-medium text-slate-700 mb-1">Tone</label>
+                <select 
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value as Tone)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-blue-500 outline-none"
+                >
+                  {Object.values(Tone).map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2 flex items-end">
+                <button
+                    onClick={handleGenerate}
+                    disabled={isLoading}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg shadow-sm active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                    {isLoading ? (
+                    <>
+                        <Loader2 size={18} className="animate-spin" />
+                        Processing...
+                    </>
+                    ) : (
+                    <>
+                        <Zap size={18} fill="currentColor" />
+                        Generate Fast
+                    </>
+                    )}
+                </button>
+              </div>
             </div>
+          </div>
         </div>
 
-        <div className="p-4 border-t border-slate-100">
-            <button 
-                onClick={clearChat}
-                className="w-full py-2 flex items-center justify-center gap-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors text-sm font-medium"
-            >
-                <Trash2 size={16} /> Clear Conversation
-            </button>
-        </div>
-      </div>
-
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col relative h-full">
-        {/* Header */}
-        <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 p-4 flex items-center justify-between sticky top-0 z-10">
-            <button 
-                onClick={() => setShowSidebar(!showSidebar)}
-                className="p-2 hover:bg-slate-100 rounded-lg text-slate-600"
-            >
-                <Settings2 size={20} />
-            </button>
-            <div className="flex items-center gap-2 bg-slate-100 px-3 py-1 rounded-full">
-                 <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-                 <span className="text-xs font-medium text-slate-600">{tone} Mode</span>
+        {/* RIGHT COLUMN: OUTPUT PORTALS */}
+        <div className="lg:col-span-7 space-y-4">
+          
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm min-h-[600px] flex flex-col">
+            {/* Output Tabs */}
+            <div className="flex border-b border-slate-200 px-2 pt-2">
+                <TabButton id="social" label="Social Suite" icon={Facebook} />
+                <TabButton id="youtube" label="YouTube" icon={Youtube} />
+                <TabButton id="script" label="Video Script" icon={FileVideo} />
             </div>
-        </header>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6">
-            {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">
-                    <Terminal size={48} className="mb-4" />
-                    <p>Start a conversation to generate content</p>
+            <div className="p-6 flex-1 bg-slate-50/50">
+                {!result ? (
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-4">
+                    <div className="w-20 h-20 rounded-full bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+                        <Sparkles size={32} className="text-blue-300" />
+                    </div>
+                    <p className="text-sm font-medium">Ready to create magic</p>
                 </div>
-            ) : (
-                messages.map((msg, idx) => (
-                    <div 
-                        key={idx} 
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                    >
-                        <div 
-                            className={`max-w-[85%] md:max-w-[70%] rounded-2xl p-4 md:p-5 shadow-sm relative group leading-relaxed text-sm md:text-base ${
-                                msg.role === 'user' 
-                                ? 'bg-blue-600 text-white rounded-tr-none' 
-                                : 'bg-white text-slate-800 border border-slate-200 rounded-tl-none'
-                            }`}
-                        >
-                            <div className="whitespace-pre-wrap">{msg.content}</div>
-                            
-                            {/* Actions for assistant messages */}
-                            {msg.role === 'assistant' && !isGenerating && (
-                                <div className="absolute -bottom-8 left-0 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button 
-                                        onClick={() => copyToClipboard(msg.content)}
-                                        className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-full text-slate-600"
-                                        title="Copy"
-                                    >
-                                        <Copy size={14} />
-                                    </button>
-                                    {idx === messages.length - 1 && (
-                                        <button 
-                                            onClick={handleRegenerate}
-                                            className="p-1.5 bg-slate-200 hover:bg-slate-300 rounded-full text-slate-600"
-                                            title="Regenerate"
-                                        >
-                                            <RefreshCw size={14} />
-                                        </button>
-                                    )}
-                                </div>
-                            )}
+                ) : (
+                <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+                    
+                    {/* TTS Player Header */}
+                    <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <button 
+                                onClick={handleTTS}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isPlayingAudio ? 'bg-red-100 text-red-600' : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'}`}
+                            >
+                                {isPlayingAudio ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-0.5" />}
+                            </button>
+                            <div>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-wide">Audio Summary</p>
+                                <p className="text-sm font-medium text-slate-800">Listen to Generated Content</p>
+                            </div>
+                        </div>
+                        <div className="h-8 w-px bg-slate-200 mx-2"></div>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono text-slate-400">Gemini 2.5 TTS</span>
                         </div>
                     </div>
-                ))
-            )}
-            
-            {/* Loading/Thinking Indicator */}
-            {isGenerating && messages[messages.length - 1]?.role !== 'assistant' && (
-                <div className="flex justify-start">
-                    <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none p-4 flex items-center gap-2">
-                        <Loader2 size={16} className="animate-spin text-blue-500" />
-                        <span className="text-xs text-slate-500">SrotoLipi is typing...</span>
-                    </div>
-                </div>
-            )}
-            <div ref={messagesEndRef} />
-        </div>
 
-        {/* Input Area */}
-        <div className="p-4 bg-white border-t border-slate-200">
-            <div className="max-w-4xl mx-auto relative">
-                <textarea
-                    ref={textareaRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSend();
-                        }
-                    }}
-                    placeholder="বাংলায় কিছু লিখুন... (Ctrl+Enter to send)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none max-h-32 min-h-[56px] shadow-inner text-slate-800"
-                    rows={1}
-                />
-                
-                <div className="absolute right-2 bottom-2">
-                    {isGenerating ? (
-                        <button 
-                            onClick={stopGeneration}
-                            className="p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg shadow transition-all"
-                        >
-                            <StopCircle size={20} />
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={() => handleSend()}
-                            disabled={!input.trim()}
-                            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            <Send size={20} />
-                        </button>
+                    {/* Content Rendering */}
+                    {activeTab === 'social' && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <SocialCard platform="Facebook" icon={Facebook} content={result.facebookPost} color="text-blue-600" onCopy={() => copyToClipboard(result.facebookPost)} />
+                        <SocialCard platform="Instagram" icon={ImageIcon} content={result.instagramCaption} color="text-pink-600" onCopy={() => copyToClipboard(result.instagramCaption)} />
+                        <SocialCard platform="LinkedIn" icon={Linkedin} content={result.linkedinPost} color="text-blue-700" onCopy={() => copyToClipboard(result.linkedinPost)} />
+                        <SocialCard platform="X (Twitter)" icon={Twitter} content={result.twitterPost} color="text-slate-800" onCopy={() => copyToClipboard(result.twitterPost)} />
+                    </div>
+                    )}
+
+                    {activeTab === 'youtube' && (
+                    <div className="space-y-6">
+                        <div className="group relative">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs uppercase font-bold text-slate-500 tracking-wider">Video Title</span>
+                                <button onClick={() => copyToClipboard(result.youtubeTitle)} className="text-slate-400 hover:text-blue-600 p-1"><Copy size={14}/></button>
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900 border border-slate-200 rounded-xl p-5 bg-white shadow-sm">{result.youtubeTitle}</h3>
+                        </div>
+                        <div className="group relative">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs uppercase font-bold text-slate-500 tracking-wider">Description</span>
+                                <button onClick={() => copyToClipboard(result.youtubeDescription)} className="text-slate-400 hover:text-blue-600 p-1"><Copy size={14}/></button>
+                            </div>
+                            <div className="text-slate-700 text-sm leading-relaxed whitespace-pre-line border border-slate-200 rounded-xl p-5 bg-white shadow-sm">
+                                {result.youtubeDescription}
+                            </div>
+                        </div>
+                    </div>
+                    )}
+
+                    {activeTab === 'script' && (
+                    <div className="space-y-4">
+                        {result.videoScript.map((scene, idx) => (
+                            <div key={idx} className="bg-white border border-slate-200 rounded-xl p-5 flex gap-5 shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex-shrink-0 w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+                                    {scene.sceneNumber}
+                                </div>
+                                <div className="flex-1 space-y-3">
+                                    <div>
+                                        <span className="text-xs font-bold text-blue-600 uppercase block mb-1">Visual Scene</span>
+                                        <p className="text-sm text-slate-800">{scene.visualDescription}</p>
+                                    </div>
+                                    <div className="border-t border-slate-100 pt-3">
+                                        <span className="text-xs font-bold text-slate-400 uppercase block mb-1">Voiceover</span>
+                                        <p className="text-sm text-slate-600 font-medium italic">"{scene.voiceoverText}"</p>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        <div className="flex justify-end pt-2">
+                            <button 
+                                onClick={() => copyToClipboard(result.videoScript.map(s => `Scene ${s.sceneNumber}:\nVisual: ${s.visualDescription}\nAudio: ${s.voiceoverText}\n`).join('\n---\n'))}
+                                className="text-xs font-medium text-white bg-slate-900 hover:bg-slate-800 flex items-center gap-2 px-4 py-2 rounded-lg transition-colors shadow-sm"
+                            >
+                                <Copy size={14} /> Copy Full Script
+                            </button>
+                        </div>
+                    </div>
                     )}
                 </div>
+                )}
             </div>
-            <p className="text-center text-[10px] text-slate-400 mt-2">
-                SrotoLipi AI can make mistakes. Verify important information. | WebLLM Core
-            </p>
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
+}
+
+// Sub-component for Social Cards
+const SocialCard = ({ platform, icon: Icon, content, color, onCopy }: any) => {
+    const [copied, setCopied] = useState(false);
+    
+    const handleCopy = () => {
+        onCopy();
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-300 hover:shadow-md transition-all group relative">
+            <div className="flex items-center justify-between mb-3">
+            <div className={`flex items-center gap-2 ${color}`}>
+                <Icon size={18} />
+                <span className="font-semibold text-sm text-slate-700">{platform}</span>
+            </div>
+            <button onClick={handleCopy} className="text-slate-400 hover:text-blue-600 transition-colors">
+                {copied ? <Check size={14} className="text-green-500"/> : <Copy size={14} />}
+            </button>
+            </div>
+            <div className="text-sm text-slate-600 leading-relaxed max-h-40 overflow-y-auto pr-1 scrollbar-thin">
+            {content}
+            </div>
+        </div>
+    );
 };
 
 export default SrotoLipiAI;

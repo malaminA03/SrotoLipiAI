@@ -1,14 +1,13 @@
 {
   "name": "srotolipi-ai",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "lucide-react": "^0.363.0",
-    "@google/genai": "*",
-    "@mlc-ai/web-llm": "^0.2.72",
+    "@google/genai": "^0.1.1",
     "web-vitals": "^2.1.0"
   },
   "devDependencies": {
